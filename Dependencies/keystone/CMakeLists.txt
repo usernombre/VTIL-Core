@@ -9,6 +9,9 @@ FetchContent_Declare(
 FetchContent_GetProperties(keystone)
 if(NOT keystone_POPULATED)
     FetchContent_Populate(keystone)
+    # Ugly hack, but keystone is dead (https://github.com/keystone-engine/keystone/pull/593)
+    file(READ "${keystone_SOURCE_DIR}/llvm/include/llvm/ADT/STLExtras.h" CONTENT)
+    file(WRITE "${keystone_SOURCE_DIR}/llvm/include/llvm/ADT/STLExtras.h" "#include <cstdint>\n${CONTENT}")
 endif()
 
 # Do not modify a keystone target that already exists
