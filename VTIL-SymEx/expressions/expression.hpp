@@ -181,7 +181,7 @@ namespace vtil::symbolic
 	{
 		using delegate =           expression_delegate;
 		using reference =          expression_reference;
-		using weak_reference =     weak_reference<expression>;
+		using weak_reference =     vtil::weak_reference<expression>;
 		using uid_relation_table = std::vector<std::pair<expression::weak_reference, expression::weak_reference>>;
 
 		// If symbolic variable, the unique identifier that it maps to.

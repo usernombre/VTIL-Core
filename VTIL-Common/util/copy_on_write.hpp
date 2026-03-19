@@ -94,7 +94,7 @@ namespace vtil
 		// Declare the object entry and its pool.
 		//
 		using object_entry =   std::pair<T, std::atomic<long>>;
-		using object_pool  =   object_pool<object_entry>;
+		using object_pool  =   vtil::object_pool<object_entry>;
 
 		// Wrap atomic operations on reference counter.
 		//

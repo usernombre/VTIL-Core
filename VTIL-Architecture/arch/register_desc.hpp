@@ -179,6 +179,9 @@ namespace vtil
 			is_valid( true );
 		}
 
+		template<typename T>
+		struct register_cast;
+
 		template<Enum T>
 		register_desc( T v ) : register_desc( register_cast<T>()( v ) ) { }
 
