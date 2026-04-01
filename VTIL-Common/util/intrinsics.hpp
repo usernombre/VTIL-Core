@@ -57,16 +57,32 @@
     #define unreachable() __assume(0)
     #define FUNCTION_NAME __FUNCSIG__
 #else
-    #include <emmintrin.h>
+    #if defined(__i386__) || defined(__x86_64__)
+        #include <emmintrin.h>
+    #endif
+
     #define unreachable() __builtin_unreachable()
     #define __forceinline __attribute__((always_inline))
     #define _AddressOfReturnAddress() ((void*)__builtin_frame_address(0))
     #define FUNCTION_NAME __PRETTY_FUNCTION__
 
+    // _mm_pause is x86-specific; provide a lightweight fallback on other targets.
+    #if !defined(__i386__) && !defined(__x86_64__)
+        __forceinline static void _mm_pause()
+        {
+            #if defined(__aarch64__) || defined(__arm__)
+                __asm__ __volatile__("yield");
+            #else
+                __asm__ __volatile__("" ::: "memory");
+            #endif
+        }
+    #endif
+
     // Declare _?mul128
     //
     __forceinline static uint64_t _umul128( uint64_t _Multiplier, uint64_t _Multiplicand, uint64_t* _HighProduct )
     {
+#if defined(__x86_64__)
         uint64_t LowProduct;
         uint64_t HighProduct;
 
@@ -76,10 +92,16 @@
 
         *_HighProduct = HighProduct;
         return LowProduct;
+#else
+        unsigned __int128 product = (unsigned __int128) _Multiplier * (unsigned __int128) _Multiplicand;
+        *_HighProduct = (uint64_t) ( product >> 64 );
+        return (uint64_t) product;
+#endif
     }
 
     __forceinline static int64_t _mul128( int64_t _Multiplier, int64_t _Multiplicand, int64_t* _HighProduct )
     {
+#if defined(__x86_64__)
         int64_t LowProduct;
         int64_t HighProduct;
 
@@ -89,6 +111,11 @@
 
         *_HighProduct = HighProduct;
         return LowProduct;
+#else
+        __int128 product = (__int128) _Multiplier * (__int128) _Multiplicand;
+        *_HighProduct = (int64_t) ( product >> 64 );
+        return (int64_t) product;
+#endif
     }
 
     // Declare _?mulh
