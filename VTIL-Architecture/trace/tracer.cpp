@@ -29,9 +29,39 @@
 #include <vtil/io>
 #include "../vm/lambda.hpp"
 #include <vtil/utility>
+#include <unordered_map>
 
 namespace vtil
 {
+	// Re entry guards for cycle heavy traces.
+	// - #52: direct/indirect reentry in tracer::trace via VM callbacks.
+	// - #78: recursive rtrace propagation over cyclic path expansions.
+	//
+	template<typename key_t>
+	struct recursion_guard
+	{
+		std::unordered_map<key_t, size_t>& depth_map;
+		key_t key;
+		bool reentrant = false;
+
+		recursion_guard( std::unordered_map<key_t, size_t>& depth_map, const key_t& key )
+			: depth_map( depth_map ), key( key )
+		{
+			auto& depth = depth_map[ key ];
+			reentrant = depth != 0;
+			depth++;
+		}
+
+		~recursion_guard()
+		{
+			auto it = depth_map.find( key );
+			if ( it != depth_map.end() && --it->second == 0 )
+				depth_map.erase( it );
+		}
+	};
+
+	inline static thread_local std::unordered_map<symbolic::variable, size_t> active_trace;
+	inline static thread_local std::unordered_map<symbolic::variable, size_t> active_rtrace;
 	// Internal type definitions.
 	//
 	using path_map_t = std::map<std::pair<const basic_block*, const basic_block*>, int>;
@@ -284,6 +314,14 @@ namespace vtil
 	{
 		using namespace logger;
 
+		recursion_guard guard_rtrace{ active_rtrace, lookup };
+		if ( guard_rtrace.reentrant )
+		{
+			auto cyclic = lookup;
+			cyclic.is_branch_dependant = true;
+			return cyclic.to_expression();
+		}
+
 		// Save whether this is the call whose result will reach the user.
 		//
 		bool initial_call = path_map.empty();
@@ -355,9 +393,9 @@ namespace vtil
 						if ( counter >= 2 )
 						{
 #if VTIL_OPT_TRACE_VERBOSE
-							// Log skipping of path.
-							//
-							log<CON_CYN>( "Path [%llx->%llx] is not taken as it's n-looping.\n", lookup.at.block->entry_vip, it.block->entry_vip );
+						// Log skipping of path.
+						//
+						log<CON_CYN>( "Path [%llx->%llx] is not taken as it's n-looping.\n", lookup.at.block->entry_vip, it.block->entry_vip );
 #endif
 							return enumerator::ocontinue;
 						}
@@ -445,6 +483,10 @@ namespace vtil
 	symbolic::expression::reference tracer::trace( const symbolic::variable& lookup )
 	{
 		using namespace logger;
+
+		recursion_guard guard_trace{ active_trace, lookup };
+		if ( guard_trace.reentrant )
+			return lookup.to_expression();
 
 		// If invalid/.begin() iterator or register with "no-trace" flags, return as is.
 		//

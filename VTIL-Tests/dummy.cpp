@@ -19,6 +19,58 @@ namespace registers
 }
 
 
+DOCTEST_TEST_CASE("Tracer stack overflow protection (#52 VM callback reentry)")
+{
+    vtil::logger::log("\n\n>> %s \n", __FUNCTION__);
+
+    // Create a scenario where trace -> trace (via VM hooks) could recurse.
+    // This simulates the #52 pattern where read_register calls back into trace.
+    auto block = vtil::basic_block::begin(0x1000);
+    vtil::register_desc reg_ax(vtil::register_physical, registers::ax, vtil::arch::bit_count, 0);
+
+    // mov eax, eax  (self-reference that would cause reentry during VM execution)
+    block->mov(reg_ax, reg_ax);
+    block->vexit(0ull);
+
+    // Trace the register at the end - should not stack overflow
+    vtil::tracer tracer;
+    auto result = tracer.trace({ std::prev(block->end()), reg_ax });
+
+    // Result should be valid and stable (either original reg or simplified constant)
+    CHECK(result.get() != nullptr);
+    vtil::logger::log("  Trace result: %s\n", result->to_string().c_str());
+}
+
+DOCTEST_TEST_CASE("Tracer stack overflow protection (#78 cyclic path propagation)")
+{
+    vtil::logger::log("\n\n>> %s \n", __FUNCTION__);
+
+    // Create a CFG with back edge to trigger #78 pattern:
+    // Block1 -> Block2 -> Block1 (cycle)
+    // Trace should terminate safely when encountering symbolic cycles.
+    auto block1 = vtil::basic_block::begin(0x1000);
+    vtil::register_desc reg_ax(vtil::register_physical, registers::ax, vtil::arch::bit_count, 0);
+
+    block1->mov(reg_ax, 0x100);
+    block1->js(vtil::REG_FLAGS, 0x2000ull, 0x3000ull);
+
+    auto block2 = block1->fork(0x2000);
+    block2->add(reg_ax, 1);
+    block2->jmp(0x1000ull);  // Back edge to block1
+    block2->fork(0x1000ull);
+
+    auto block3 = block1->fork(0x3000);
+    block3->vexit(0ull);
+
+    // rtrace should terminate without stack overflow despite the cycle
+    vtil::tracer tracer;
+    auto result = tracer.rtrace({ block3->begin(), reg_ax });
+
+    // Result should be valid (either concrete or branch ddependent)
+    CHECK(result.get() != nullptr);
+    vtil::logger::log("  RTrace result: %s\n", result->to_string().c_str());
+}
+
 DOCTEST_TEST_CASE("dummy")
 {
     vtil::logger::log("\n\n>> %s \n", __FUNCTION__);
@@ -283,6 +335,46 @@ DOCTEST_TEST_CASE("Optimization register_renaming_pass")
     CHECK(ins.operands.size() == 2);
     CHECK(ins.operands[0].reg().local_id == registers::bx);
     CHECK(ins.operands[1].imm().ival == 0x1);
+}
+
+DOCTEST_TEST_CASE("Optimization register_renaming_pass vxcall")
+{
+	vtil::logger::log("\n\n>> %s \n", __FUNCTION__);
+
+	auto block = vtil::basic_block::begin(0x1337);
+
+	vtil::register_desc reg_ecx(vtil::register_physical, registers::cx, vtil::arch::bit_count, 0);
+
+	auto sr0 = block->owner->alloc(vtil::arch::bit_count);
+
+	// The ecx register here is a potential function argument, register_renaming_pass should not work here.
+	block->mov(reg_ecx, (uintptr_t)0x880000);
+	block->vxcall((uintptr_t)0x10000);
+
+	auto block2 = block->fork(0x2000);
+	block2->mov(sr0, reg_ecx);
+	block2->mov(reg_ecx, (uintptr_t)1);
+	block2->mov(reg_ecx, sr0);
+	block2->vxcall((uintptr_t)0x10000);
+
+	auto block3 = block2->fork(0x3000);
+	block3->vexit(0ull); // marks the end of a basic_block
+
+	vtil::logger::log(":: Before:\n");
+	vtil::debug::dump(block->owner);
+
+	vtil::optimizer::register_renaming_pass{}(block->owner);
+
+	vtil::logger::log(":: After:\n");
+	vtil::debug::dump(block->owner);
+
+	auto ins = (*block)[0];
+
+	//  mov ecx, 0x880000
+	CHECK(ins.base == &vtil::ins::mov);
+	CHECK(ins.operands.size() == 2);
+	CHECK(ins.operands[0].reg().local_id == registers::cx);
+	CHECK(ins.operands[1].imm().ival == 0x880000);
 }
 
 DOCTEST_TEST_CASE("Optimization symbolic_rewrite_pass<true>")
