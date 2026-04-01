@@ -15,6 +15,11 @@ namespace registers
     constexpr auto bx = X86_REG_EBX;
     constexpr auto cx = X86_REG_ECX;
     constexpr auto dx = X86_REG_EDX;
+#elif _M_ARM64 || __aarch64__
+    constexpr auto ax = ARM64_REG_X0;
+    constexpr auto bx = ARM64_REG_X1;
+    constexpr auto cx = ARM64_REG_X2;
+    constexpr auto dx = ARM64_REG_X3;
 #endif
 }
 
