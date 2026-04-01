@@ -148,7 +148,7 @@ namespace vtil::task
 #if VTIL_USE_THREAD_POOLING
 			handle = std::async( std::launch::async, std::move( f ) );
 #else
-			handle = { f };
+			handle = std::thread( std::move( f ) );
 #endif
 		}
 
