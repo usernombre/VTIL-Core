@@ -2,7 +2,7 @@ message(STATUS "Fetching keystone (this might take a while)...")
 FetchContent_Declare(
     keystone
     GIT_REPOSITORY https://github.com/keystone-engine/keystone
-    GIT_TAG        e1547852d9accb9460573eb156fc81645b8e1871
+    GIT_TAG        dc7932ef2b2c4a793836caec6ecab485005139d6
     GIT_SHALLOW    false
 )
 
