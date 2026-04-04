@@ -92,7 +92,8 @@ namespace vtil
 		//
 		vip_t vip;
 		deserialize( in, vip );
-		blk = new basic_block( rtn, vip );
+		auto new_block = std::make_unique<basic_block>( rtn, vip );
+		blk = new_block.get();
 		deserialize( in, blk->sp_offset );
 		deserialize( in, blk->sp_index );
 		deserialize( in, blk->last_temporary_index );
@@ -100,7 +101,7 @@ namespace vtil
 		deserialize( in, list );
 		blk->assign( list.begin(), list.end() );
 		blk->owner = rtn;
-		blk->owner->explored_blocks[ blk->entry_vip ] = blk;
+		rtn->explored_blocks[ blk->entry_vip ] = std::move( new_block );
 
 		// Read referenced VIP's.
 		//
@@ -115,17 +116,17 @@ namespace vtil
 		{
 			// Reference the cached instance.
 			//
-			basic_block*& blk = rtn->explored_blocks[ vip ];
+			auto& blk_ptr = rtn->explored_blocks[ vip ];
 
 			// Keep reading next block until referenced block is found,
 			// once it is found break out of the loop and return the block.
 			//
-			while ( !blk )
+			while ( !blk_ptr )
 			{
 				basic_block* tmp;
 				deserialize( in, rtn, tmp );
 			}
-			return blk;
+			return blk_ptr.get();
 		};
 		std::transform( prev.begin(), prev.end(), std::back_inserter( blk->prev ), ref_resolve );
 		std::transform( next.begin(), next.end(), std::back_inserter( blk->next ), ref_resolve );
@@ -161,7 +162,7 @@ namespace vtil
 		// Dump all blocks in cached order.
 		//
 		for ( auto& pair : rtn->explored_blocks )
-			serialize( out, pair.second );
+			serialize( out, pair.second.get() );
 	}
 	void deserialize( std::istream& in, routine*& rtn )
 	{
@@ -176,7 +177,7 @@ namespace vtil
 
 		// Create a new routine.
 		//
-		rtn = new routine( hdr.arch_id );
+		rtn = new routine( hdr.arch_id );  // Caller takes ownership
 
 		// Read the entry point VIP.
 		//
@@ -210,7 +211,7 @@ namespace vtil
 
 		// Assign the fetched entry point from cache and return.
 		//
-		rtn->entry_point = rtn->explored_blocks[ entry_vip ];
+		rtn->entry_point = rtn->explored_blocks[ entry_vip ].get();
 		if ( !rtn->entry_point )
 			throw std::runtime_error( "Failed resolving entry point." );
 

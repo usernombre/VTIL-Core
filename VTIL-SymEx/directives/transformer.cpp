@@ -83,8 +83,8 @@ namespace vtil::symbolic
 					expression::reference lhs, rhs;
 
 					std::array tx = {
-						std::pair( &lhs, dir->lhs.ptr ),
-						std::pair( &rhs, dir->rhs.ptr )
+						std::pair( &lhs, dir->lhs.ptr.get() ),
+						std::pair( &rhs, dir->rhs.ptr.get() )
 					};
 					
 					if ( tx[ 1 ].second->priority > tx[ 0 ].second->priority )

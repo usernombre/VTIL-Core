@@ -120,6 +120,7 @@ namespace vtil
 		{
 			static_assert( alignof( object_entry ) <= 8, "Object aligned over max alignment." );
 			pool_instance* pool = ( pool_instance* ) malloc( sizeof( pool_instance ) + sizeof( object_entry ) * ( n - 1 ) );
+			release_assert( pool != nullptr );
 			pool->object_count = n;
 			return pool;
 		}

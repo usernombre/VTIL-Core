@@ -58,10 +58,14 @@ namespace vtil
 		using base_type = T;
 		using base_type::base_type;
 
-		// Allow copy/move construction and assignment, safety is left to the owner.
+		// Allow copy/move construction (creates a NEW unlocked mutex, does not transfer lock state).
+		// This is intentional: used by routine::clone() to create independent mutex for the copy.
 		//
 		relaxed_mutex( relaxed_mutex&& o ) {}
 		relaxed_mutex( const relaxed_mutex& o ) {}
+
+		// Assignment is a no-op (same rationale as copy/move ctors: mutex state is not transferable).
+		//
 		relaxed_mutex& operator=( relaxed_mutex&& o ) { return *this; }
 		relaxed_mutex& operator=( const relaxed_mutex& o ) { return *this; }
 	};

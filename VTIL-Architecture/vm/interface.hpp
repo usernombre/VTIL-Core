@@ -48,19 +48,25 @@ namespace vtil
 	{
 		// Reads from the register.
 		//
-		virtual symbolic::expression::reference read_register( const register_desc& desc ) const { unreachable(); return {}; }
-		
+		// Virtual destructor for safe polymorphic deletion.
+		//
+		virtual ~vm_interface() = default;
+
+		// Reads from the register.
+		//
+		virtual symbolic::expression::reference read_register( const register_desc& desc ) const { logger::error( "Pure virtual call to vm_interface::read_register" ); }
+
 		// Reads the given number of bytes from the memory, returns null if aliasing fails.
 		//
-		virtual symbolic::expression::reference read_memory( const symbolic::expression::reference& pointer, size_t byte_count ) const { unreachable(); return {}; }
+		virtual symbolic::expression::reference read_memory( const symbolic::expression::reference& pointer, size_t byte_count ) const { logger::error( "Pure virtual call to vm_interface::read_memory" ); }
 
 		// Writes to the register.
 		//
-		virtual void write_register( const register_desc& desc,symbolic::expression::reference value ) { unreachable(); }
-		
+		virtual void write_register( const register_desc& desc,symbolic::expression::reference value ) { logger::error( "Pure virtual call to vm_interface::write_register" ); }
+
 		// Writes the given expression to the memory, returns false if aliasing fails.
 		//
-		virtual bool write_memory( const symbolic::expression::reference& pointer, deferred_value<symbolic::expression::reference> value, bitcnt_t size ) { unreachable(); return false; }
+		virtual bool write_memory( const symbolic::expression::reference& pointer, deferred_value<symbolic::expression::reference> value, bitcnt_t size ) { logger::error( "Pure virtual call to vm_interface::write_memory" ); }
 		bool write_memory_v( const symbolic::expression::reference& pointer, symbolic::expression::reference value ) { return write_memory( pointer, std::move( value ), value.size() ); }
 
 		// Runs the given instruction, returns whether it was successful.

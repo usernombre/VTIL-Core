@@ -313,7 +313,7 @@ namespace vtil
 			//
 			if ( owner )
 				for ( auto& [vip, blk] : owner->explored_blocks )
-					fassert( blk != this );
+					fassert( blk.get() != this );
 
 			// Destroy instruction list.
 			//

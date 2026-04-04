@@ -59,3 +59,31 @@ endif()
 # Include Threads
 find_package(Threads REQUIRED)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${CMAKE_THREAD_LIBS_INIT})
+
+target_precompile_headers(${PROJECT_NAME} PUBLIC
+    <atomic>
+    <mutex>
+    <string>
+    <vector>
+    <unordered_map>
+    <unordered_set>
+    <type_traits>
+    <functional>
+    <optional>
+    <cstdint>
+    <memory>
+    <algorithm>
+    <tuple>
+    <array>
+    <chrono>
+    <string_view>
+)
+
+if(VTIL_UNITY_BUILD)
+    set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+endif()
+
+if(VTIL_SANITIZE_THREADS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(${PROJECT_NAME} PUBLIC -fsanitize=thread)
+    target_link_options(${PROJECT_NAME} PUBLIC -fsanitize=thread)
+endif()

@@ -153,9 +153,9 @@ namespace vtil::optimizer
 			{
 				// Invoke parallel transformation.
 				//
-				transform_parallel( rtn->explored_blocks, [ & ] ( const std::pair<const vip_t, basic_block*>& pair )
+				transform_parallel( rtn->explored_blocks, [ & ] ( const std::pair<const vip_t, std::unique_ptr<basic_block>>& pair )
 				{
-					worker( pair.second );
+					worker( pair.second.get() );
 				} );
 				break;
 			}

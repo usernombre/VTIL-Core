@@ -252,16 +252,17 @@ namespace vtil::logger
 			format::fix_parameter<params>( std::forward<params>( ps ) )...
 		);
 
-		// Try acquiring the lock.
+		// Try acquiring the lock. Intentionally prints even without lock
+		// for crash safety -- warnings during deadlocks must still be visible.
 		//
 		bool locked = logger_state.try_lock( 100ms );
-		
+
 		// Print the warning.
 		//
 		set_color( CON_YLW );
 		fprintf( VTIL_LOGGER_ERR_DST, "\n[!] Warning: %s\n", message.c_str() );
 
-		// Unlock if previously locked.
+		// Release the lock if acquired.
 		//
 		if ( locked ) logger_state.unlock();
 	}
@@ -296,6 +297,15 @@ namespace vtil::logger
 		set_color( CON_RED );
 		fprintf( VTIL_LOGGER_ERR_DST, "\n[*] Error: %s\n", message.c_str() );
 
+		// Print a minimal stack trace for post-mortem traceability.
+		//
+#if defined(__GNUC__) || defined(__clang__)
+		{
+			fprintf( VTIL_LOGGER_ERR_DST, "[*] Stack trace:\n" );
+			fprintf( VTIL_LOGGER_ERR_DST, "    [0] %p\n", __builtin_return_address( 0 ) );
+		}
+#endif
+
 		// Break the program, leave the logger locked since we'll break anyways.
 		//
 		unreachable();
@@ -320,7 +330,11 @@ namespace vtil::logger
 				fprintf( VTIL_LOGGER_ERR_DST, "\n[*] Error: %s\n", message.c_str() );
 				sleep_for( 1000ms );
 			}
-			catch ( ... ) {}
+			catch ( ... )
+			{
+				set_color( CON_RED );
+				fprintf( VTIL_LOGGER_ERR_DST, "\n[*] Error: Unknown non-std exception caught during terminate\n" );
+			}
 
 			// Call into previous handler if relevant.
 			//

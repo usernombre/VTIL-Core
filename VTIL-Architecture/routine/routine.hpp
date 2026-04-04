@@ -60,9 +60,25 @@ namespace vtil
 	{
 	protected:
 		// This structure cannot be copied without a call to ::clone().
+		// Copy constructor must be explicit since explored_blocks contains unique_ptrs.
 		//
-		routine( const routine& ) = default;
-		routine& operator=( const routine& ) = default;
+		routine( const routine& o )
+			: mutex()
+			, arch_id( o.arch_id )
+			, explored_blocks()      // NOT copied -- clone() handles block deep-copy
+			, path_cache()           // NOT copied -- clone() rebuilds
+			, entry_point( nullptr )
+			, last_internal_id( o.last_internal_id.load() )
+			, routine_convention( o.routine_convention )
+			, subroutine_convention( o.subroutine_convention )
+			, spec_subroutine_conventions( o.spec_subroutine_conventions )
+			, local_opt_count( o.local_opt_count.load() )
+			, context( o.context )
+			, depth_ordered_list_cache{}
+			, cfg_epoch( o.cfg_epoch )
+			, epoch( o.epoch.load() )
+		{}
+		routine& operator=( const routine& ) = delete;
 	public:
 		// Mutex guarding the whole structure, more information on thread-safety can be found at basic_block.hpp.
 		//
@@ -73,8 +89,9 @@ namespace vtil
 		architecture_identifier arch_id;
 
 		// Cache of explored blocks, mapping virtual instruction pointer to the basic block structure.
+		// Blocks are owned by the routine via unique_ptr for automatic lifetime management.
 		//
-		std::unordered_map<vip_t, basic_block*> explored_blocks;
+		std::unordered_map<vip_t, std::unique_ptr<basic_block>> explored_blocks;
 
 		// Cache of paths from block A to block B.
 		//
@@ -183,7 +200,7 @@ namespace vtil
 		{
 			std::lock_guard _g( mutex );
 			for ( auto& [vip, block] : explored_blocks )
-				if ( enumerator::invoke( fn, block ).should_break )
+				if ( enumerator::invoke( fn, block.get() ).should_break )
 					return;
 		}
 
@@ -268,6 +285,6 @@ namespace vtil
 
 		// Clones the routine and it's every block.
 		//
-		routine* clone() const;
+		std::unique_ptr<routine> clone() const;
 	};
 };

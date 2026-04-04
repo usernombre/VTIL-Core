@@ -87,24 +87,5 @@ namespace vtil::symbolic::directive
 		return true;
 	}
 
-	// Simple copyable unique pointer implementation.
-	//
-	instance::reference::reference( const instance& o )  : ptr( new instance( o ) ) {}
-	instance::reference::reference( instance&& o )       : ptr( new instance( std::move( o ) ) ) {}
-	instance::reference::reference( const reference& o ) : ptr( o ? new instance( *o ) : nullptr ) {}
-	instance::reference::reference( reference&& o )      : ptr( std::exchange( o.ptr, nullptr ) ) {}
-	instance::reference::~reference()
-	{
-		if ( ptr ) delete ptr;
-	}
-	instance::reference& instance::reference::operator=( instance::reference&& o )
-	{
-		ptr = std::exchange( o.ptr, nullptr );
-		return *this;
-	}
-	instance::reference& instance::reference::operator=( const instance::reference& o )
-	{
-		ptr = o ? new instance( *o ) : nullptr;
-		return *this;
-	}
+	// Note: instance::reference is now fully defined inline in directive.hpp :))
 };

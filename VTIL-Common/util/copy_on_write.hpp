@@ -67,21 +67,22 @@ namespace vtil
 			}
 		}
 
+		// Legacy SFINAE helper kept for reference; prefer requires clause below.
 		template<typename T, typename... params>
 		using enable_if_constructor = typename std::enable_if_t<should_invoke_constructor<T, params...>(), int>;
 
 		template<typename T>
 		inline static T* reloc_const( const T* ptr, const void* src, void* dst )
 		{
-			int64_t reloc_delta = ( int64_t ) dst - ( int64_t ) src;
-			return ( T* ) ( ( uint64_t ) ptr + reloc_delta );
+			int64_t reloc_delta = reinterpret_cast<intptr_t>( dst ) - reinterpret_cast<intptr_t>( src );
+			return reinterpret_cast<T*>( reinterpret_cast<uintptr_t>( ptr ) + reloc_delta );
 		}
 
 		template<typename T>
 		inline static T& reloc_const( const T& ref, const void* src, void* dst )
 		{
-			int64_t reloc_delta = ( int64_t ) dst - ( int64_t ) src;
-			return *( T* ) ( ( uint64_t ) &ref + reloc_delta );
+			int64_t reloc_delta = reinterpret_cast<intptr_t>( dst ) - reinterpret_cast<intptr_t>( src );
+			return *reinterpret_cast<T*>( reinterpret_cast<uintptr_t>( &ref ) + reloc_delta );
 		}
 	};
 
@@ -97,29 +98,19 @@ namespace vtil
 
 		// Wrap atomic operations on reference counter.
 		//
+		// Atomic reference counting with consistent memory ordering across all platforms.
+		//
 		__forceinline static void inc_ref( object_entry* entry )
 		{
-#ifdef _MSC_VER
 			std::atomic_fetch_add_explicit( &entry->second, +1, std::memory_order::relaxed );
-#else
-			entry->second++;
-#endif
 		}
 		__forceinline static bool dec_ref( object_entry* entry )
 		{
-#ifdef _MSC_VER
 			return std::atomic_fetch_add_explicit( &entry->second, -1, std::memory_order::acq_rel ) == 1;
-#else
-			return --entry->second == 0;
-#endif
 		}
 		__forceinline static long get_ref( object_entry* entry )
 		{
-#ifdef _MSC_VER
-			return std::atomic_load_explicit( &entry->second, std::memory_order::relaxed );
-#else
-			return entry->second.load();
-#endif
+			return std::atomic_load_explicit( &entry->second, std::memory_order::acquire );
 		}
 
 		// Store pointer as a 63-bit integer and append an additional bit to control temporary/allocated.
@@ -145,7 +136,8 @@ namespace vtil
 
 		// Owning reference constructor.
 		//
-		template<typename... params, impl::enable_if_constructor<shared_reference<T>, params...> = 0>
+		template<typename... params>
+			requires ( impl::should_invoke_constructor<shared_reference<T>, params...>() )
 		shared_reference( params&&... p ) 
 		{
 			combined_value = ( uint64_t ) object_pool::construct
@@ -241,13 +233,13 @@ namespace vtil
 
 		// Gets object itself.
 		//
-		constexpr const T* get() const { return ( const T* ) pointer; }
+		constexpr const T* get() const { return reinterpret_cast<const T*>( static_cast<uintptr_t>( pointer ) ); }
 
 		// Check if temporary pointer.
 		// - Micro optimized to generate cmp branch instead of bitmasked 
 		//   test since MSVC is too stupid apparently.
 		//
-		constexpr bool is_temporary() const { return ( ( int64_t ) combined_value ) < 0; /*return temporary;*/ }
+		constexpr bool is_temporary() const { return ( static_cast<int64_t>( combined_value ) ) < 0; /*return temporary;*/ }
 
 		// Converts to owning reference.
 		//
@@ -271,7 +263,7 @@ namespace vtil
 
 			// Return the current pointer without const-qualifiers.
 			//
-			return ( T* ) combined_value;
+			return reinterpret_cast<T*>( combined_value );
 		}
 
 		// Simple validity checks.
@@ -307,7 +299,7 @@ namespace vtil
 		T* operator+() 
 		{ 
 			if ( is_temporary() ) [[unlikely]]
-				return ( T* ) pointer;
+				return reinterpret_cast<T*>( static_cast<uintptr_t>( pointer ) );
 			return own(); 
 		}
 
@@ -377,7 +369,7 @@ namespace vtil
 
 		// Redirect pointer and dereferencing operator to the reference and cast to const-qualified equivalent.
 		//
-		constexpr const T* get() const { return ( const T* ) pointer; }
+		constexpr const T* get() const { return reinterpret_cast<const T*>( static_cast<uintptr_t>( pointer ) ); }
 		constexpr const T* operator->() const { return get(); }
 		constexpr const T& operator*() const { return *get(); }
 

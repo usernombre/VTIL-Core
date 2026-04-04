@@ -42,6 +42,10 @@ namespace vtil
 	//
 	struct tracer
 	{
+		// Virtual destructor for safe polymorphic deletion.
+		//
+		virtual ~tracer() = default;
+
 		inline static thread_local bool recursive_flag = false;
 
 		// Traces a variable across the basic block it belongs to and generates a symbolic expression 

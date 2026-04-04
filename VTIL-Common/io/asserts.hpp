@@ -71,11 +71,16 @@ namespace vtil
 // Declare debug assertions, dassert is only asserted in debug mode, dassert_s
 // has the same functionality but is still evaluated in release mode.
 //
+// Release-mode assertion: always active regardless of build configuration.
+// Use for critical invariants that must never be violated (e.g., null checks after allocation).
+//
+#define release_assert(...) vtil::abort_if(!bool(__VA_ARGS__), fassert__stringify(__VA_ARGS__) " at " __FILE__ ":" fassert__istringify(__LINE__) )
+
 #ifdef _DEBUG
 	#define dassert(...)     fassert( __VA_ARGS__ )
 	#define dassert_s( ... ) fassert( __VA_ARGS__ )
 #else
-	#define dassert(...)     
+	#define dassert(...)
 	#define dassert_s( ... ) ( __VA_ARGS__ )
 #endif
 

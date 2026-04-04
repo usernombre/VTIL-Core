@@ -1,5 +1,5 @@
-# Require at least CMake version 3.14.5 or later for FetchContent
-cmake_minimum_required(VERSION 3.14.5)
+# Require at least CMake version 3.16 for FetchContent and target_precompiled_headers
+cmake_minimum_required(VERSION 3.16)
 
 # Define the VTIL project
 project(VTIL-Core)
@@ -14,6 +14,8 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
 endif()
 
 option(VTIL_BUILD_TESTS "Build tests" ${VTIL_ROOT_PROJECT})
+option(VTIL_UNITY_BUILD "Enable unity build for faster compilation" OFF)
+option(VTIL_SANITIZE_THREADS "Enable ThreadSanitizer (Clang/GCC only)" OFF)
 
 # Load the dependencies
 set(CMAKE_FOLDER "VTIL-Core/Dependencies")

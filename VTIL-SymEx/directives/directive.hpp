@@ -148,41 +148,45 @@ namespace vtil::symbolic::directive
     //
     struct instance : math::operable<instance>
     {
-        // Simple copyable unique pointer implementation.
+        // Deep-copying unique pointer for directive instances.
         //
         struct reference
         {
-            instance* ptr = nullptr;
-            
+            std::unique_ptr<instance> ptr;
+
             // Construct by implicit null or instance value.
             //
-            reference() {}
-            reference( const instance& i );
-            reference( instance&& i );
+            reference() = default;
+            reference( const instance& i ) : ptr( std::make_unique<instance>( i ) ) {}
+            reference( instance&& i ) : ptr( std::make_unique<instance>( std::move( i ) ) ) {}
 
-            // Copy / Move from another reference.
+            // Deep-copy from another reference, move is default.
             //
-            reference( const reference& o );
-            reference( reference&& o );
-            reference& operator=( reference&& o );
-            reference& operator=( const reference& o );
+            reference( const reference& o ) : ptr( o.ptr ? std::make_unique<instance>( *o.ptr ) : nullptr ) {}
+            reference( reference&& ) = default;
+            reference& operator=( reference&& ) = default;
+            reference& operator=( const reference& o )
+            {
+                ptr = o.ptr ? std::make_unique<instance>( *o.ptr ) : nullptr;
+                return *this;
+            }
 
-            // Destructor deletes the value.
+            // Default destructor.
             //
-            ~reference();
+            ~reference() = default;
 
             // Null check.
             //
-            explicit operator bool() const { return ptr; }
-            
+            explicit operator bool() const { return ptr != nullptr; }
+
             // Pointer interface.
             //
-            operator instance*() { return ptr; }
-            operator const instance*() const { return ptr; }
+            operator instance*() { return ptr.get(); }
+            operator const instance*() const { return ptr.get(); }
             instance& operator*() { return *ptr; }
             const instance& operator*() const { return *ptr; }
-            instance* operator->() { return ptr; }
-            const instance* operator->() const { return ptr; }
+            instance* operator->() { return ptr.get(); }
+            const instance* operator->() const { return ptr.get(); }
         };
 
         // If symbolic variable, the identifier of the variable

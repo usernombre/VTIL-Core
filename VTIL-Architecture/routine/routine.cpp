@@ -155,7 +155,7 @@ namespace vtil
 
 		auto it = explored_blocks.find( vip );
 		if ( it == explored_blocks.end() ) return nullptr;
-		return it->second;
+		return it->second.get();
 	}
 	basic_block* routine::get_block( vip_t vip ) const
 	{
@@ -180,25 +180,26 @@ namespace vtil
 		// Try inserting into the map:
 		//
 		auto [it, inserted] = explored_blocks.emplace( vip, nullptr );
-		basic_block*& block = it->second;
 		if ( inserted )
 		{
 			// Create the block and set entry if none set.
 			//
-			block = new basic_block( this, vip );
-			if ( !entry_point ) entry_point = block;
-			
+			it->second = std::make_unique<basic_block>( this, vip );
+			if ( !entry_point ) entry_point = it->second.get();
+
 			// Create self link.
 			//
-			path_cache[ block ][ block ].insert( block );
+			path_cache[ it->second.get() ][ it->second.get() ].insert( it->second.get() );
 		}
+
+		basic_block* block = it->second.get();
 
 		// Fix links and explore the path.
 		//
 		if ( src )
 		{
 			fassert( src->owner == this );
-		
+
 			bool new_next = std::find( src->next.begin(), src->next.end(), block ) == src->next.end();
 			bool new_prev = inserted || std::find( block->prev.begin(), block->prev.end(), src ) == block->prev.end();
 
@@ -261,10 +262,9 @@ namespace vtil
 			it++;
 		}
 
-		// Remove from explored blocks and delete it.
+		// Remove from explored blocks (unique_ptr automatically deletes the block).
 		//
 		explored_blocks.erase( block->entry_vip );
-		delete block;
 	}
 
 	// Gets a list of exits.
@@ -280,7 +280,7 @@ namespace vtil
 		std::vector<const basic_block*> exits;
 		for ( auto& [vip, block] : explored_blocks )
 			if ( block->next.empty() )
-				exits.push_back( block );
+				exits.push_back( block.get() );
 		return exits;
 	}
 
@@ -429,8 +429,8 @@ namespace vtil
 		// Sum up instructions in every block.
 		//
 		size_t n = 0;
-		for ( auto& [_, blk] : explored_blocks )
-			n += blk->size();
+		for ( auto& [_, blk_ptr] : explored_blocks )
+			n += blk_ptr->size();
 		return n;
 	}
 	size_t routine::num_branches() const
@@ -442,8 +442,8 @@ namespace vtil
 		// Sum up paths in every block.
 		//
 		size_t n = 0;
-		for ( auto& [_, blk] : explored_blocks )
-			n += blk->next.size();
+		for ( auto& [_, blk_ptr] : explored_blocks )
+			n += blk_ptr->next.size();
 		return n;
 	}
 
@@ -455,35 +455,39 @@ namespace vtil
 		//
 		std::lock_guard g{ this->mutex };
 
+		// Clear inter-block references before unique_ptrs auto-destruct,
+		// to avoid dangling pointers during destruction order.
+		//
 		for ( auto& [vip, block] : explored_blocks )
 		{
 			block->next.clear();
 			block->prev.clear();
-			delete std::exchange( block, nullptr );
 		}
+		explored_blocks.clear();
 	}
 
 	// Clones the routine and it's every block.
 	//
-	routine* routine::clone() const
+	std::unique_ptr<routine> routine::clone() const
 	{
 		// Acquire the routine mutex.
 		//
 		std::lock_guard g{ this->mutex };
 
-		// Copy the routine.
+		// Copy the routine (protected copy ctor -- explored_blocks is left empty).
 		//
-		auto copy = new routine( *this );
-		
-		// Clone each block referenced.
+		auto copy = std::unique_ptr<routine>( new routine( *this ) );
+
+		// Deep-copy each block from the source routine.
 		//
-		for ( auto& [vip, block] : copy->explored_blocks )
+		for ( auto& [vip, block] : this->explored_blocks )
 		{
-			block = new basic_block( *block );
-			block->owner = copy;
+			auto cloned = std::make_unique<basic_block>( *block );
+			cloned->owner = copy.get();
+			copy->explored_blocks.emplace( vip, std::move( cloned ) );
 		}
-		
-		// Fix block links.
+
+		// Fix block links (prev/next still point to source blocks, remap to copy's blocks).
 		//
 		for ( auto& [vip, block] : copy->explored_blocks )
 			for ( auto& list : { &block->next, &block->prev } )

@@ -48,10 +48,11 @@ namespace vtil::optimizer
 		//
 		cached_tracer local_tracer = {};
 		auto lbranch_info = aux::analyze_branch( blk, &local_tracer, {} );
-		ctracer.mtx.lock();
-		for ( auto& [k, v] : local_tracer.cache )
-			ctracer.cache[ k ] = v;
-		ctracer.mtx.unlock();
+		{
+			std::lock_guard _g{ ctracer.mtx };
+			for ( auto& [k, v] : local_tracer.cache )
+				ctracer.cache[ k ] = v;
+		}
 		auto branch_info = aux::analyze_branch( blk, &ctracer, { .cross_block = true, .pack = true, .resolve_opaque = true } );
 
 		// If branching to real, assert single next block.
@@ -233,7 +234,7 @@ namespace vtil::optimizer
 
 				for ( auto it = rtn->explored_blocks.begin(); it != rtn->explored_blocks.end(); )
 				{
-					if ( it->second->prev.size() == 0 && it->second != rtn->entry_point )
+					if ( it->second->prev.size() == 0 && it->second.get() != rtn->entry_point )
 					{
 						// For each destination:
 						//
@@ -241,14 +242,14 @@ namespace vtil::optimizer
 						{
 							// Remove the link.
 							//
-							block->prev.erase( std::remove( block->prev.begin(), block->prev.end(), it->second ), block->prev.end() );
-							
+							block->prev.erase( std::remove( block->prev.begin(), block->prev.end(), it->second.get() ), block->prev.end() );
+
 							// If no prev link left, repeat logic.
 							//
 							repeat |= block->prev.empty();
 						}
 
-						// Erase block.
+						// Erase block (unique_ptr auto-deletes).
 						//
 						it = rtn->explored_blocks.erase( it );
 					}

@@ -42,7 +42,7 @@ namespace vtil::optimizer::validation
 			deserialize( iss, rtn );
 			return rtn;
 		}();
-		return std::unique_ptr<routine>{ cache->clone() };
+		return cache->clone();
 	}
 
 	bool test1::validate( const routine* rtn ) const

@@ -28,6 +28,9 @@
 #pragma once
 #include "type_helpers.hpp"
 #include "../io/asserts.hpp"
+#ifdef _DEBUG
+#include <typeinfo>
+#endif
 
 namespace vtil
 {
@@ -44,6 +47,9 @@ namespace vtil
 		void* obj = nullptr;
 		Ret( *fn )( void*, Args... ) = nullptr;
 		bool const_invocable = true;
+#ifdef _DEBUG
+		const std::type_info* stored_type = nullptr;
+#endif
 
 		// Null construction.
 		//
@@ -61,6 +67,9 @@ namespace vtil
 				return ( *( F* ) obj )( std::forward<Args>( args )... );
 			};
 			const_invocable = Invocable<std::add_const_t<std::decay_t<F>>, Ret, Args...>;
+#ifdef _DEBUG
+			stored_type = &typeid( F );
+#endif
 		}
 		
 		// Unsafe for storage.

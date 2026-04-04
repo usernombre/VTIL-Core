@@ -1,3 +1,9 @@
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+#ifndef DOCTEST_BREAK_INTO_DEBUGGER
+#define DOCTEST_BREAK_INTO_DEBUGGER() __builtin_debugtrap()
+#endif
+#endif
+
 #include "doctest.h"
 #include <vtil/vtil>
 #include <vtil/arch>
