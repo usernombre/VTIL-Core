@@ -26,6 +26,7 @@
 // POSSIBILITY OF SUCH DAMAGE.        
 //
 #include "bblock_thunk_removal_pass.hpp"
+#include <algorithm>
 
 namespace vtil::optimizer
 {
@@ -64,70 +65,105 @@ namespace vtil::optimizer
 			fassert(blk->sp_offset == 0);
 
 			basic_block* next = blk->next[0];
-			basic_block* prev = blk->prev[0];				
+			basic_block* prev = blk->prev[0];
+			bool can_fold = prev != next;
 
-			// Remove the block from the next hierarchy
-			//	
-			for (auto& it : prev->next)
+			if (can_fold)
 			{
-				if (it->entry_vip == blk->entry_vip)
-					it = next;
-			}
+				auto prev_branch = prev->back();
+				fassert(prev_branch.base->is_branching_virt());
 
-			// Remove the block from the prev hierarchy
-			//
-			for (auto& it : next->prev)
-			{
-				if (it->entry_vip == blk->entry_vip)
-					it = prev;
-			}
-			
-			fassert(prev->back().base->branch_operands_vip.size() != 0);
-
-			//Regular loop, because we need the operand index for make_mutable
-			//
-			for (size_t i = 0; i < prev->back().operands.size(); i++)
-			{
-				if (!prev->back().operands[i].is_immediate())
-					continue;
-
-				auto& ins = make_mutable(prev->back());						
-				if (ins.operands[i].imm().ival == blk->entry_vip)
-				{
-					ins.operands[i].imm().ival = next->entry_vip;
-				}	
-			}
-
-			// TODO: should we do this with another operands loop? We currently only have "js" that qualifies so a simple if does the job for now
-			//			
-			auto branching_instruction = prev->back();
-			if (branching_instruction.base == &ins::js)
-			{
-				fassert(branching_instruction.operands.size() == 3);
-
-				// This pass should not interfer with blocks that aren't already touched by branch correction / our corrections above
+				// If any virtual branch target operand is register-based, we cannot
+				// safely retarget old_vip->new_vip for this predecessor.
 				//
-				if (branching_instruction.operands[1].is_immediate() && branching_instruction.operands[2].is_immediate())
+				for (int idx : prev_branch.base->branch_operands_vip)
 				{
-					if (branching_instruction.operands[1].imm().ival == branching_instruction.operands[2].imm().ival)
+					fassert(idx >= 0 && (size_t)idx < prev_branch.operands.size());
+					if (!prev_branch.operands[idx].is_immediate())
 					{
-						auto new_vip = branching_instruction.operands[1].imm();
-
-						auto ins = std::prev(prev->end());						
-
-						(+ins)->base = &ins::jmp;
-						(+ins)->operands.resize(1);
-						(+ins)->operands[0] = { new_vip.ival, arch::bit_count };
-
-						prev->next.resize(1);
-
-						next->prev.erase(std::find(next->prev.begin(), next->prev.end(), prev));
+						can_fold = false;
+						break;
 					}
 				}
-			}			
-			
-			obsolete_blocks.emplace(blk);
-			counter++;
+			}
+
+			size_t rewritten_targets = 0;
+			if (can_fold)
+			{
+				// Retarget only branch target operands and ensure at least one
+				// successful rewrite happened before touching CFG links.
+				//
+				auto& mut_branch = make_mutable(prev->back());
+				for (int idx : mut_branch.base->branch_operands_vip)
+				{
+					fassert(idx >= 0 && (size_t)idx < mut_branch.operands.size());
+					auto& op = mut_branch.operands[idx];
+					if (op.is_immediate() && op.imm().ival == blk->entry_vip)
+					{
+						op.imm().ival = next->entry_vip;
+						rewritten_targets++;
+					}
+				}
+
+				can_fold = rewritten_targets != 0;
+			}
+
+			if (can_fold)
+			{
+				auto dedup_links = [] (auto& links)
+				{
+					for (auto it = links.begin(); it != links.end();)
+					{
+						if (std::find(links.begin(), it, *it) != it)
+							it = links.erase(it);
+						else
+							++it;
+					}
+				};
+
+				// Rewire predecessor/successor links and deduplicate adjacency.
+				//
+				prev->next.erase(std::remove(prev->next.begin(), prev->next.end(), blk), prev->next.end());
+				if (std::find(prev->next.begin(), prev->next.end(), next) == prev->next.end())
+					prev->next.emplace_back(next);
+				dedup_links(prev->next);
+
+				next->prev.erase(std::remove(next->prev.begin(), next->prev.end(), blk), next->prev.end());
+				if (std::find(next->prev.begin(), next->prev.end(), prev) == next->prev.end())
+					next->prev.emplace_back(prev);
+				dedup_links(next->prev);
+
+				// TODO: should we do this with another operands loop? We currently only have "js" that qualifies so a simple if does the job for now
+				//
+				auto branching_instruction = prev->back();
+				if (branching_instruction.base == &ins::js)
+				{
+					fassert(branching_instruction.operands.size() == 3);
+
+					// This pass should not interfer with blocks that aren't already touched by branch correction / our corrections above
+					//
+					if (branching_instruction.operands[1].is_immediate() && branching_instruction.operands[2].is_immediate())
+					{
+						if (branching_instruction.operands[1].imm().ival == branching_instruction.operands[2].imm().ival)
+						{
+							auto new_vip = branching_instruction.operands[1].imm();
+
+							auto ins = std::prev(prev->end());
+
+							(+ins)->base = &ins::jmp;
+							(+ins)->operands.resize(1);
+							(+ins)->operands[0] = { new_vip.ival, arch::bit_count };
+
+							prev->next.clear();
+							prev->next.emplace_back(next);
+							dedup_links(next->prev);
+						}
+					}
+				}
+
+				obsolete_blocks.emplace(blk);
+				counter++;
+			}
 		}
 
 		// Recurse into destinations:
@@ -151,6 +187,9 @@ namespace vtil::optimizer
 	{
 		// Invoke recursive optimizer starting from entry point.
 		//
+		visited.clear();
+		obsolete_blocks.clear();
+		first_block = nullptr;
 		visited.reserve( rtn->num_blocks() );
 		return pass( rtn->entry_point, true );
 	}

@@ -754,6 +754,61 @@ DOCTEST_TEST_CASE("Optimization bblock_thunk_removal_pass")
     }
 }
 
+DOCTEST_TEST_CASE("Regression #80: avoid incorrect block removal")
+{
+    vtil::logger::log("\n\n>> %s \n", __FUNCTION__);
+
+    auto block = test_helpers::begin_block(0x0ull);
+    auto [t0, t1, t2, t3] = block->tmp(64, 64, 1, 64);
+    auto rtn = block->owner;
+
+    block->mov(t0, vtil::REG_FLAGS);
+    block->bnot(t0);
+    block->ifs(t1, t0.select(1, 2), 0x1000ull);
+    block->mov(t2, t0.select(1, 2));
+    block->bnot(t2);
+    block->ifs(t3, t2, 0x2000ull);
+    block->add(t1, t3);
+    block->add(t1, vtil::REG_IMGBASE);
+    block->jmp(t1);
+
+    if (auto block_1000 = block->fork(0x1000ull))
+    {
+        block_1000->jmp(0x3000ull);
+        block_1000->fork(0x3000ull);
+    }
+    if (auto block_2000 = block->fork(0x2000ull))
+    {
+        block_2000->jmp(0x3000ull);
+        block_2000->fork(0x3000ull);
+    }
+    if (auto block_3000 = rtn->get_block(0x3000ull))
+    {
+        block_3000->vexit(uintptr_t(0xdeadc0de));
+    }
+
+    vtil::logger::log(":: Before:\n");
+    vtil::debug::dump(rtn);
+
+    CHECK(rtn->num_blocks() == 4);
+    CHECK(rtn->get_block(0x0ull) != nullptr);
+    CHECK(rtn->get_block(0x1000ull) != nullptr);
+    CHECK(rtn->get_block(0x2000ull) != nullptr);
+    CHECK(rtn->get_block(0x3000ull) != nullptr);
+
+    vtil::optimizer::bblock_thunk_removal_pass{}(rtn);
+    vtil::optimizer::branch_correction_pass{}(rtn);
+
+    vtil::logger::log(":: After:\n");
+    vtil::debug::dump(rtn);
+
+    CHECK(rtn->num_blocks() == 4);
+    CHECK(rtn->get_block(0x0ull) != nullptr);
+    CHECK(rtn->get_block(0x1000ull) != nullptr);
+    CHECK(rtn->get_block(0x2000ull) != nullptr);
+    CHECK(rtn->get_block(0x3000ull) != nullptr);
+}
+
 DOCTEST_TEST_CASE("Optimization branch_correction_pass")
 {
     vtil::logger::log("\n\n>> %s \n", __FUNCTION__);
