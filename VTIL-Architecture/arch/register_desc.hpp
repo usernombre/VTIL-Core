@@ -36,6 +36,15 @@
 
 namespace vtil
 {
+	// Forward declarations: register_desc and register_cast are mutually
+	// referencing the converting constructor in register_desc calls
+	// register_cast<T>, and register_cast returns register_desc
+	//
+	struct register_desc;
+
+	template<typename T>
+	struct register_cast;
+
 	// Flags that describe the properties of the register.
 	//
 	enum register_flag : uint32_t
@@ -339,9 +348,9 @@ namespace vtil
 		REDUCE_TO( bit_count, ( uint64_t(architecture) << 56 ) | local_id, flags, bit_offset );
 	};
 
-	// Should be overriden by the user to describe conversion of the
-	// register type they use (e.g. x86_reg for Capstone/Keystone) into
-	// VTIL register descriptors for seamless casting into vtil::operand type.
+	// Primary template of register_cast triggers a static_assert for unsupported types.
+	// Specialize this for your register enum (e.g. x86_reg, arm64_reg) to enable
+	// seamless casting into vtil::operand.
 	//
 	template<typename T>
 	struct register_cast
@@ -352,7 +361,10 @@ namespace vtil
 			return {};
 		}
 	};
-	template<> 
+
+	// Specializations for known register types.
+	//
+	template<>
 	struct register_cast<register_desc>
 	{
 		constexpr register_desc operator()( register_desc v ) { return v; }

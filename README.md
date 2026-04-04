@@ -1,7 +1,7 @@
 <p align="center">
 
-  <a href="https://www.vtil.org/">
-    <img width="256" heigth="256" src="https://vtil.org/logo.png">
+  <a href="https://www.vtil.cc/">
+    <img width="256" heigth="256" src="https://vtil.cc/assets/media/logo.png">
   </a>  
 
   <h1 align="center">VTIL</h1>
@@ -39,7 +39,7 @@ This repository contains the core components of the VTIL Project used across the
 
 It is currently incomplete as the initial release is not done yet, and documentation and FAQ will be within this repository and the organization website once they're done.
 
-Until the initial release, you can keep up to date with the VTIL project by checking my [personal twitter account](https://twitter.com/_can1357) or the VTIL website [vtil.org](https://vtil.org/).
+Until the initial release, you can keep up to date with the VTIL project by checking my [personal twitter account](https://twitter.com/_can1357) or the VTIL website [vtil.cc](https://vtil.cc/).
 
 ## Building (Windows)
 

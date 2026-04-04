@@ -104,7 +104,7 @@ namespace vtil
 
 	// Directory indices
 	//
-	enum directory_id
+	enum class directory_id
 	{
 		directory_entry_export = 0, // Export Directory
 		directory_entry_import = 1, // Import Directory
@@ -396,7 +396,7 @@ namespace vtil
 		uint32_t num_data_directories;
 		data_directories_x86_t data_directories;
 
-		bool has_directory( directory_id id ) const { return has_directory( &data_directories.entries[ id ] ); }
+		bool has_directory( directory_id id ) const { return has_directory( &data_directories.entries[ static_cast<size_t>( id ) ] ); }
 		bool has_directory( const data_directory_t* dir ) const { return &data_directories.entries[ num_data_directories ] < dir && dir->present(); }
 	};
 	template<bool x64>
@@ -435,8 +435,8 @@ namespace vtil
 		file_header_t file_header;
 		optional_header_t<x64> optional_header;
 
-		auto get_sections() { return ( section_header_t* ) ( ( char* ) &optional_header + file_header.size_optional_header ); }
-		auto get_sections() const { return ( const section_header_t* ) ( ( char* ) &optional_header + file_header.size_optional_header ); }
+		auto get_sections() { return reinterpret_cast<section_header_t*>( reinterpret_cast<char*>( &optional_header ) + file_header.size_optional_header ); }
+		auto get_sections() const { return reinterpret_cast<const section_header_t*>( reinterpret_cast<const char*>( &optional_header ) + file_header.size_optional_header ); }
 		auto get_section( size_t n ) { return get_sections() + n; }
 		auto get_section( size_t n ) const { return get_sections() + n; }
 	};
@@ -467,11 +467,11 @@ namespace vtil
 		uint16_t e_res2[ 10 ];
 		uint32_t e_lfanew;
 
-		template<bool x64> auto get_nt_headers() { return ( nt_headers_t<x64>* ) ( ( char* ) this + e_lfanew ); }
-		template<bool x64> auto get_nt_headers() const { return ( const nt_headers_t<x64>* ) ( ( char* ) this + e_lfanew ); }
+		template<bool x64> auto get_nt_headers() { return reinterpret_cast<nt_headers_t<x64>*>( reinterpret_cast<char*>( this ) + e_lfanew ); }
+		template<bool x64> auto get_nt_headers() const { return reinterpret_cast<const nt_headers_t<x64>*>( reinterpret_cast<const char*>( this ) + e_lfanew ); }
 	};
 
-	enum reloc_type_id
+	enum class reloc_type_id : uint16_t
 	{
 		rel_based_absolute = 0,
 		rel_based_high = 1,
@@ -494,9 +494,9 @@ namespace vtil
 		uint32_t size_block;
 		reloc_entry_t entries[ 1 ];   // Variable length array
 
-		auto get_next() { return ( reloc_block_t* ) ( ( char* ) this + this->size_block ); }
-		auto get_next() const { return ( const reloc_block_t* ) ( ( char* ) this + this->size_block ); }
-		size_t num_entries() const { return ( reloc_entry_t* ) get_next() - &entries[ 0 ]; }
+		auto get_next() { return reinterpret_cast<reloc_block_t*>( reinterpret_cast<char*>( this ) + this->size_block ); }
+		auto get_next() const { return reinterpret_cast<const reloc_block_t*>( reinterpret_cast<const char*>( this ) + this->size_block ); }
+		size_t num_entries() const { return reinterpret_cast<const reloc_entry_t*>( get_next() ) - &entries[ 0 ]; }
 	};
 
 	struct reloc_directory_t
@@ -511,18 +511,18 @@ namespace vtil
 	template<typename S, typename T>
 	static decltype( auto ) visit_nt( S* self, T&& fn )
 	{
-		auto dos_header = ( dos_header_t* ) self->cdata();
+		auto dos_header = reinterpret_cast<dos_header_t*>( const_cast<void*>( self->cdata() ) );
 		auto* nt_hdrs = dos_header->get_nt_headers<true>();
 
 		if( nt_hdrs->optional_header.magic == OPT_HDR64_MAGIC )
-			return fn( carry_const( self, ( nt_headers_x64_t* ) nt_hdrs ) );
+			return fn( carry_const( self, reinterpret_cast<nt_headers_x64_t*>( nt_hdrs ) ) );
 		else
-			return fn( carry_const( self, ( nt_headers_x86_t* ) nt_hdrs ) );
+			return fn( carry_const( self, reinterpret_cast<nt_headers_x86_t*>( nt_hdrs ) ) );
 	}
 
 	bool pe_image::is_pe64() const
 	{
-		auto dos_header = ( const dos_header_t* ) cdata();
+		auto dos_header = reinterpret_cast<const dos_header_t*>( cdata() );
 		return dos_header->get_nt_headers<true>()->optional_header.magic == OPT_HDR64_MAGIC;
 	}
 	uintptr_t pe_image::get_alignment_mask() const
@@ -541,7 +541,7 @@ namespace vtil
 	{
 		// Get the section count from file header.
 		//
-		auto dos_header = ( const dos_header_t* ) cdata();
+		auto dos_header = reinterpret_cast<const dos_header_t*>( cdata() );
 		return dos_header->get_nt_headers<true>()->file_header.num_sections;
 	}
 
@@ -549,7 +549,7 @@ namespace vtil
 	{
 		// Get the NT headers.
 		//
-		auto dos_header = ( const dos_header_t* ) cdata();
+		auto dos_header = reinterpret_cast<const dos_header_t*>( cdata() );
 		auto nt_headers = dos_header->get_nt_headers<true>();
 
 		// Return invalid descriptor if out-of-boundaries.
@@ -577,7 +577,7 @@ namespace vtil
 	{
 		// Get the NT headers.
 		//
-		auto dos_header = ( dos_header_t* ) cdata();
+		auto dos_header = reinterpret_cast<dos_header_t*>( data() );
 		auto nt_headers = dos_header->get_nt_headers<true>();
 
 		// Fill section descriptor and return.
@@ -659,8 +659,8 @@ namespace vtil
 		// Get image boundaries and the dos header.
 		//
 		const void* data = cdata();
-		const void* data_limit = ( char* ) cdata() + size();
-		auto dos_header = ( const dos_header_t* ) cdata();
+		const void* data_limit = reinterpret_cast<const char*>( cdata() ) + size();
+		auto dos_header = reinterpret_cast<const dos_header_t*>( cdata() );
 		
 		// Validate DOS header.
 		//
@@ -669,7 +669,7 @@ namespace vtil
 
 		// Validate image size.
 		//
-		if ( ( ( const char* ) data + dos_header->e_lfanew + std::min( sizeof( nt_headers_x64_t ), sizeof( nt_headers_x86_t ) ) ) > data_limit )
+		if ( ( reinterpret_cast<const char*>( data ) + dos_header->e_lfanew + std::min( sizeof( nt_headers_x64_t ), sizeof( nt_headers_x86_t ) ) ) > data_limit )
 			return false;
 
 		// Validate NT Magic.
@@ -717,7 +717,7 @@ namespace vtil
 
 		// Append a section and write the characteristics.
 		//
-		auto nt_hdrs = ( ( dos_header_t* ) this->data() )->get_nt_headers<true>();
+		auto nt_hdrs = reinterpret_cast<dos_header_t*>( this->data() )->get_nt_headers<true>();
 		size_t index = nt_hdrs->file_header.num_sections++;
 		auto scn = nt_hdrs->get_section( index );
 		memset( scn, 0, sizeof( section_header_t ) );
@@ -740,7 +740,7 @@ namespace vtil
 			// Get block boundaries
 			//
 			const auto* block_begin = &rva_to_ptr<reloc_directory_t>( reloc_dir.rva )->first_block;
-			const auto* block_end = ( const reloc_block_t* ) ( ( char* ) block_begin + reloc_dir.size );
+			const auto* block_end = reinterpret_cast<const reloc_block_t*>( reinterpret_cast<const char*>( block_begin ) + reloc_dir.size );
 
 			// For each block:
 			//
@@ -756,25 +756,25 @@ namespace vtil
 						.rva = uint64_t( block->base_rva ) + block->entries[ i ].offset
 					};
 
-					switch ( block->entries[ i ].type )
+					switch ( static_cast<reloc_type_id>( block->entries[ i ].type ) )
 					{
-						case rel_based_dir64:
-							entry.length = 8; 
-							entry.relocator = [ ] ( void* data, int64_t delta ) { *( ( uint64_t* ) data ) += delta; };
+						case reloc_type_id::rel_based_dir64:
+							entry.length = 8;
+							entry.relocator = [ ] ( void* data, int64_t delta ) { *static_cast<uint64_t*>( data ) += delta; };
 							break;
-						case rel_based_high_low:
+						case reloc_type_id::rel_based_high_low:
 							entry.length = 4;
-							entry.relocator = [ ] ( void* data, int64_t delta ) { *( ( int32_t* ) data ) += math::narrow_cast<int32_t>( delta ); };
+							entry.relocator = [ ] ( void* data, int64_t delta ) { *static_cast<int32_t*>( data ) += math::narrow_cast<int32_t>( delta ); };
 							break;
-						case rel_based_low:
+						case reloc_type_id::rel_based_low:
 							entry.length = 2;
-							entry.relocator = [ ] ( void* data, int64_t delta ) { *( ( int16_t* ) data ) += ( int16_t ) ( ( uint16_t ) delta ); };
+							entry.relocator = [ ] ( void* data, int64_t delta ) { *static_cast<int16_t*>( data ) += static_cast<int16_t>( static_cast<uint16_t>( delta ) ); };
 							break;
-						case rel_based_high:
+						case reloc_type_id::rel_based_high:
 							entry.length = 2;
-							entry.relocator = [ ] ( void* data, int64_t delta ) { *( ( int16_t* ) data ) += ( int16_t ) ( ( ( uint32_t ) delta ) >> 16 ); };
+							entry.relocator = [ ] ( void* data, int64_t delta ) { *static_cast<int16_t*>( data ) += static_cast<int16_t>( static_cast<uint32_t>( delta ) >> 16 ); };
 							break;
-						case rel_based_absolute:
+						case reloc_type_id::rel_based_absolute:
 							entry.length = 0;
 							entry.relocator = [ ] ( void* data, int64_t delta ) { /*nop*/ };
 							break;
