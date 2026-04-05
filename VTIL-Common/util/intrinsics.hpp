@@ -52,16 +52,56 @@
 	#define HAS_BIT_CAST __has_builtin(__builtin_bit_cast)
 #endif
 
+#include <cstdio>
+#include <cstdlib>
+
 #ifdef _MSC_VER
     #include <intrin.h>
-    #define unreachable() __assume(0)
-    #define FUNCTION_NAME __FUNCSIG__
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
 #else
     #if defined(__i386__) || defined(__x86_64__)
         #include <emmintrin.h>
     #endif
+#endif
 
-    #define unreachable() __builtin_unreachable()
+namespace vtil::detail
+{
+    [[noreturn]] inline void unreachable_handler( const char* file, int line, const char* func )
+    {
+        // Print to stderr works for console apps and piped output.
+        //
+        fprintf( stderr, "\n[FATAL] unreachable code reached at %s:%d in %s\n", file, line, func );
+        fflush( stderr );
+
+#ifdef _MSC_VER
+        // emit to Windows debug output so it shows in
+        // VS / windbg even for gui / service processes
+        //
+        char buf[ 512 ];
+        snprintf( buf, sizeof( buf ),
+                  "[FATAL] unreachable code reached at %s:%d in %s\n", file, line, func );
+        OutputDebugStringA( buf );
+
+        // Break into debugger if attached, otherwise just terminate
+        //
+        if ( IsDebuggerPresent() ) __debugbreak();
+#endif
+        // _Exit skips atexit handlers and CRT cleanup avoids the
+        // abort() dialog on Windows and any cascading destruction issues.
+        //
+        _Exit( 3 );
+    }
+}
+
+#ifdef _MSC_VER
+    #define unreachable() vtil::detail::unreachable_handler( __FILE__, __LINE__, __FUNCSIG__ )
+    #define FUNCTION_NAME __FUNCSIG__
+#else
+    #define unreachable() vtil::detail::unreachable_handler( __FILE__, __LINE__, __PRETTY_FUNCTION__ )
     #define __forceinline __attribute__((always_inline))
     #define _AddressOfReturnAddress() ((void*)__builtin_frame_address(0))
     #define FUNCTION_NAME __PRETTY_FUNCTION__
