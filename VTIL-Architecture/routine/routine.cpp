@@ -460,6 +460,7 @@ namespace vtil
 		//
 		for ( auto& [vip, block] : explored_blocks )
 		{
+			block->owner = nullptr;
 			block->next.clear();
 			block->prev.clear();
 		}
